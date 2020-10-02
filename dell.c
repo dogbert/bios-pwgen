@@ -2,31 +2,20 @@
 #include <string.h>
 #include <time.h>
 
-#define mystr "My own utility. Copyright (C) 2007-2010 hpgl, Russia"
+#define mystr "Dell Laptop Master Password Generator.\nCopyright (C) 2011-2012 dogbert; 2007-2010 hpgl"
 
 #define allow595B
 #define allowA95B
 #define allow2A7B
+#define allow1D3B
+#define allow3A5B
+#define allow1F5A
+#define allow1F66
+#define allow6FF1
 
-#define fSVCTAG 0
-#define fHDDSN 1
-#define fHDDold 2
-#define t595B 0
-#define tD35B 1
-#define tA95B 2
-#define t2A7B 3
-
-#ifdef allow595B
-#define f595B
-#endif
-#ifdef allowA95B
-#define f595B
-#endif
-#ifdef allow2A7B
-#define f595B
-#endif
-
-char bSuffix[]="595BD35BA95B2A7B";
+enum { t595B, tD35B, tA95B, t2A7B, t1D3B, t3A5B, t1F5A, t1F66, t6FF1} biosType;
+enum { fSVCTAG, fHDDSN, fHDDold } serialType;
+char* bSuffix[] = {"595B", "D35B", "A95B", "2A7B", "1D3B", "3A5B", "1F5A", "1F66", "6FF1"};
 
 char scancods[]="\00\0331234567890-=\010\011qwertyuiop[]\015\377asdfghjkl;'`\377\\zxcvbnm,./";
 char encscans[]={0x05,0x10,0x13,0x09,0x32,0x03,0x25,0x11,0x1F,0x17,0x06,0x15, \
@@ -35,6 +24,16 @@ char encscans[]={0x05,0x10,0x13,0x09,0x32,0x03,0x25,0x11,0x1F,0x17,0x06,0x15, \
 
 #ifdef allow2A7B
 char chartabl2A7B[72]="012345679abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0";
+#endif
+#ifdef allow1D3B
+char chartabl1D3B[72]="0BfIUG1kuPvc8A9Nl5DLZYSno7Ka6HMgqsJWm65yCQR94b21OTp7VFX2z0jihE33d4xtrew0";
+#endif
+
+#ifdef allow1F66
+char chartabl1F66[72]="0ewr3d4xtUG1ku0BfIp7VFb21OTSno7KDLZYqsJWa6HMgCQR94m65y9Nl5Pvc8AjihE3X2z0";
+#endif
+#ifdef allow1F66
+char chartabl6FF1[72]="08rptBxfbGVMz38IiSoeb360MKcLf4QtBCbWVzmH5wmZUcRR5DZG2xNCEv1nFtzsZB2bw1X0";
 #endif
 
 unsigned int MD5magic[64]={
@@ -70,12 +69,13 @@ void initData(void) {
 
 typedef int (encfuncT1) (int num1, int num2, int num3);
 
-#ifdef f595B
+#ifdef allow595B
 int enc0F2(int num1, int num2, int num3) {return (((~num3 ^ num2) & num1) ^ ~num3);}
 int enc0F4(int num1, int num2, int num3) {return (( ~num2 ^ num1) ^ num3); }
 int enc0F5(int num1, int num2, int num3) {return (( ~num1 | ~num3) ^ num2); }
 #endif
 int enc1F2(int num1, int num2, int num3) {return ((( num3 ^ num2) & num1) ^ num3);}
+int enc1F3(int num1, int num2, int num3) {return ((( num1 ^ num2) & num3) ^ num2);}
 int enc1F4(int num1, int num2, int num3) {return (( num2 ^ num1) ^ num3); }
 int enc1F5(int num1, int num2, int num3) {return (( num1 | ~num3) ^ num2); }
 int encF3 (int num1, int num2, int num3) {return ((( num1 ^ num2) & num3) ^ num2);}
@@ -87,17 +87,30 @@ int enc1F1 (encfuncT1 func, int num1, int num2, int num3, int key)
 	return func(num1,num2,num3)+key;
 }
 
-#ifdef f595B
+#ifdef allow595B
 int enc0F1 (encfuncT1 func, int num1, int num2, int num3, int key)
 {
 	return func(num1,num2,num3)-key;
 }
 #endif
 
+
 unsigned int rol(unsigned int t, int bitsrot)
 {
 	return (t >> (32-bitsrot)) | (t << bitsrot);
 }
+
+#ifdef allow1D3B
+int enc0F6(encfuncT1 func, int num1, int num2, int num3, int num4, int key, int rot)
+{
+	return rol(func(num1,num2,num3)+num4-key, rot)+num1;
+}
+
+int enc0F7(encfuncT1 func, int num1, int num2, int num3, int num4, int key, int rot)
+{
+	return rol(func(num1,num2,num3)+num4+key, rot)+num1;
+}
+#endif
 
 void blockEncodeF(int *outdata, int *encblock, encfuncT2 func1,
                   encfuncT1 func2, encfuncT1 func3, encfuncT1 func4, encfuncT1 func5 )
@@ -127,13 +140,319 @@ void blockEncodeF(int *outdata, int *encblock, encfuncT2 func1,
 	outdata[3]+=D;
 }
 
-void blockEncode(char *outdata, int *encblock, char btype) {
-	if (btype==tD35B)
-		blockEncodeF((int *)outdata,encblock,enc1F1,enc1F2,encF3,enc1F4,enc1F5);
-#ifdef f595B
-	else
-		blockEncodeF((int *)outdata,encblock,enc0F1,enc0F2,encF3,enc0F4,enc0F5);
+void blockEncode3A5B(int *outdata, int *encblock) 
+{
+	int A,B,C,D,i,j;
+
+	A=outdata[0];
+	B=outdata[1];
+	C=outdata[2];
+	D=outdata[3];
+
+	for (i=0;i<5;i++) {
+		for (j=0;j<4;j++) {
+
+			B = enc0F6(enc0F2,C,A,D,B,MD5magic[4*j]+encblock[4*j],7);
+			D = enc0F6(enc0F2,B,C,A,D,MD5magic[4*j+1]+encblock[4*j+1],12);
+			A = enc0F6(enc0F2,D,B,C,A,MD5magic[4*j+2]+encblock[4*j+2],17);
+			C = enc0F6(enc0F2,A,D,B,C,MD5magic[4*j+3]+encblock[4*j+3],22);
+		}
+		for (j=0;j<4;j++) {
+			B = enc0F6(encF3,C,A,D,B,MD5magic[4*(j+4)]+encblock[4*j+1],5);
+			D = enc0F6(encF3,B,C,A,D,MD5magic[4*(j+4)+1]+encblock[(4*j+6)&0xF],9);
+			A = enc0F6(encF3,D,B,C,A,MD5magic[4*(j+4)+2]+encblock[(4*j-5)&0xF],14);
+			C = enc0F6(encF3,A,D,B,C,MD5magic[4*(j+4)+3]+encblock[4*j],20);
+		}
+		for (j=3;j>=0;j--) {
+			B = enc0F6(enc0F4,C,A,D,B,MD5magic[4*(11-j)]+encblock[(4*j-7)&0xF],4);
+			D = enc0F6(enc0F4,B,C,A,D,MD5magic[4*(11-j)+1]+encblock[(4*j-4)&0xF],11);
+			A = enc0F6(enc0F4,D,B,C,A,MD5magic[4*(11-j)+2]+encblock[(4*j-1)&0xF],16);
+			C = enc0F6(enc0F4,A,D,B,C,MD5magic[4*(11-j)+3]+encblock[4*j+2],23);
+
+		}
+
+		for (j=3;j>=0;j--) {
+			B = enc0F6(enc0F5,C,A,D,B,MD5magic[4*(15-j)]+encblock[(4*j+4)&0xF],6);
+			D = enc0F6(enc0F5,B,C,A,D,MD5magic[4*(15-j)+1]+encblock[(4*j-5)&0xF],10);
+			A = enc0F6(enc0F5,D,B,C,A,MD5magic[4*(15-j)+2]+encblock[4*j+2],15);
+			C = enc0F6(enc0F5,A,D,B,C,MD5magic[4*(15-j)+3]+encblock[(4*j-7)&0xF],21);
+		}
+		outdata[0]+=B;
+		outdata[1]+=C;
+		outdata[2]+=A;
+		outdata[3]+=D;
+	};
+
+
+}
+
+void blockEncode1F66(int *outdata, int *encblock) 
+{
+//	memset(outdata, 0, 4*4);
+//	memset(encblock, 0, 16*4);
+
+	int A,B,C,D,i,j;
+
+	A=outdata[0];
+	B=outdata[1];
+	C=outdata[2];
+	D=outdata[3];
+
+	for (i=0;i<17;i++) {
+		A |= 0x100097; B ^= 0xA0008; C |= 0x60606161-i; D ^= 0x50501010+i;
+		for (j=0;j<4;j++) {
+			A = enc0F6(enc0F2,B,C,D,A,MD5magic[16+4*j]+encblock[4*j],7);
+			D = enc0F6(enc0F2,A,B,C,D,MD5magic[16+4*j+1]+encblock[4*j+1],12);
+			C = enc0F6(enc0F2,D,A,B,C,MD5magic[16+4*j+2]+encblock[4*j+2],17);
+			B = enc0F6(enc0F2,C,D,A,B,MD5magic[16+4*j+3]+encblock[4*j+3],22);
+		}
+		for (j=0;j<4;j++) {
+			A = enc0F6(encF3,B,C,D,A,MD5magic[4*(3-j)+48]+encblock[4*j+1],5);
+			D = enc0F6(encF3,A,B,C,D,MD5magic[4*(3-j)+48+1]+encblock[(4*j+6)&0xF],9);
+			C = enc0F6(encF3,D,A,B,C,MD5magic[4*(3-j)+48+2]+encblock[(4*j-5)&0xF],14);
+			B = enc0F6(encF3,C,D,A,B,MD5magic[4*(3-j)+48+3]+encblock[4*j],20);
+		}
+		//printf("R2 i: %d A: %08x B: %08x C: %08x D: %08x\n", i, A, B, C, D);
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F4,B,C,D,A,MD5magic[4*(3-j)+32]+encblock[(4*j-7)&0xF],4);
+			D = enc0F6(enc0F4,A,B,C,D,MD5magic[4*(3-j)+32+1]+encblock[(4*j-4)&0xF],11);
+			C = enc0F6(enc0F4,D,A,B,C,MD5magic[4*(3-j)+32+2]+encblock[(4*j-1)&0xF],16);
+			B = enc0F6(enc0F4,C,D,A,B,MD5magic[4*(3-j)+32+3]+encblock[4*j+2],23);
+		}
+
+		//printf("R3 i: %d A: %08x B: %08x C: %08x D: %08x\n", i, A, B, C, D);
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F5,B,C,D,A,MD5magic[4*j]+encblock[(4*j+4)&0xF],6);
+			D = enc0F6(enc0F5,A,B,C,D,MD5magic[4*j+1]+encblock[(4*j-5)&0xF],10);
+			C = enc0F6(enc0F5,D,A,B,C,MD5magic[4*j+2]+encblock[4*j+2],15);
+			B = enc0F6(enc0F5,C,D,A,B,MD5magic[4*j+3]+encblock[(4*j-7)&0xF],21);
+		}
+		outdata[0]+=A;
+		outdata[1]+=B;
+		outdata[2]+=C;
+		outdata[3]+=D;
+	};
+//	printf("intermediate A: %08x B: %08x C: %08x D: %08x\n", A, B, C, D);
+
+	for (i=0;i<21;i++) {
+		A |= 0x97; B ^= 0x08; C |= 0x50501010-i; D ^= 0x60606161+i;
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F4,B,C,D,A,MD5magic[4*(3-j)+32]+encblock[(4*j-7)&0xF],4);
+			D = enc0F6(enc0F4,A,B,C,D,MD5magic[4*(3-j)+32+1]+encblock[(4*j-4)&0xF],11);
+			C = enc0F6(enc0F4,D,A,B,C,MD5magic[4*(3-j)+32+2]+encblock[(4*j-1)&0xF],16);
+			B = enc0F6(enc0F4,C,D,A,B,MD5magic[4*(3-j)+32+3]+encblock[4*j+2],23);
+
+		}
+//		printf("R1 i: %d A: %08x B: %08x C: %08x D: %08x\n", i, A, B, C, D);
+
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F5,B,C,D,A,MD5magic[4*(3-j)+48]+encblock[4*j+4&0xF],6);
+			D = enc0F6(enc0F5,A,B,C,D,MD5magic[4*(3-j)+48+1]+encblock[(4*j-5)&0xF],10);
+			C = enc0F6(enc0F5,D,A,B,C,MD5magic[4*(3-j)+48+2]+encblock[(4*j+2)],15);
+			B = enc0F6(enc0F5,C,D,A,B,MD5magic[4*(3-j)+48+3]+encblock[(4*j-7)&0xF],21);
+		}
+//		printf("R2 i: %d A: %08x B: %08x C: %08x D: %08x\n", i, A, B, C, D);
+
+		for (j=0;j<4;j++) {
+			A = enc0F6(enc0F2,B,C,D,A,MD5magic[4*j]+encblock[4*j],7);
+			D = enc0F6(enc0F2,A,B,C,D,MD5magic[4*j+1]+encblock[(4*j+1)],12);
+			C = enc0F6(enc0F2,D,A,B,C,MD5magic[4*j+2]+encblock[(4*j+2)],17);
+			B = enc0F6(enc0F2,C,D,A,B,MD5magic[4*j+3]+encblock[4*j+3],22);
+		}
+//		printf("R3 i: %d A: %08x B: %08x C: %08x D: %08x\n", i, A, B, C, D);
+
+		for (j=0;j<4;j++) {
+			A = enc0F6(encF3,B,C,D,A,MD5magic[16+4*j]+encblock[4*j+1],5);
+			D = enc0F6(encF3,A,B,C,D,MD5magic[16+4*j+1]+encblock[(4*j+6)&0xF],9);
+			C = enc0F6(encF3,D,A,B,C,MD5magic[16+4*j+2]+encblock[(4*j-5)&0xF],14);
+			B = enc0F6(encF3,C,D,A,B,MD5magic[16+4*j+3]+encblock[4*j],20);
+		}
+//		printf("R4 i: %d A: %08x B: %08x C: %08x D: %08x\n", i, A, B, C, D);
+
+		outdata[0]+=A;
+		outdata[1]+=B;
+		outdata[2]+=C;
+		outdata[3]+=D;
+	};
+//	printf("end A: %08x B: %08x C: %08x D: %08x\n", A, B, C, D);
+
+}
+
+#ifdef allow6FF1
+void blockEncode6FF1(int *outdata, int *encblock) 
+{
+	int A,B,C,D,i,j;
+
+	A=outdata[0];
+	B=outdata[1];
+	C=outdata[2];
+	D=outdata[3];
+
+	for (i=0;i<23;i++) {
+		A |= 0xA08097; B ^= 0xA010908; C |= 0x60606161-i; D ^= 0x50501010+i;
+		for (j=0;j<4;j++) {
+			A = enc0F6(enc0F2,A,B,C,D,MD5magic[4*j+32]+encblock[4*j],7);
+			D = enc0F6(enc0F2,D,A,B,C,MD5magic[4*j+32+1]+encblock[4*j+1],12);
+			C = enc0F6(enc0F2,C,D,A,B,MD5magic[4*j+32+2]+encblock[4*j+2],17);
+			B = enc0F6(enc0F2,B,C,D,A,MD5magic[4*j+32+3]+encblock[4*j+3],22);
+		}
+		for (j=0;j<4;j++) {
+			A = enc0F6(encF3,A,B,C,D,MD5magic[4*j]+encblock[4*j+1],5);
+			D = enc0F6(encF3,D,A,B,C,MD5magic[4*j+1]+encblock[(4*j+6)&0xF],9);
+			C = enc0F6(encF3,C,D,A,B,MD5magic[4*j+2]+encblock[(4*j-5)&0xF],14);
+			B = enc0F6(encF3,B,C,D,A,MD5magic[4*j+3]+encblock[4*j],20);
+		}
+
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F4,A,B,C,D,MD5magic[4*j+16]+encblock[(4*j-7)&0xF],4);
+			D = enc0F6(enc0F4,D,A,B,C,MD5magic[4*j+16+1]+encblock[(4*j-4)&0xF],11);
+			C = enc0F6(enc0F4,C,D,A,B,MD5magic[4*j+16+2]+encblock[(4*j-1)&0xF],16);
+			B = enc0F6(enc0F4,B,C,D,A,MD5magic[4*j+16+3]+encblock[4*j+2],23);
+		}
+
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F5,A,B,C,D,MD5magic[4*j+48]+encblock[(4*j+4)&0xF],6);
+			D = enc0F6(enc0F5,D,A,B,C,MD5magic[4*j+48+1]+encblock[(4*j-5)&0xF],10);
+			C = enc0F6(enc0F5,C,D,A,B,MD5magic[4*j+48+2]+encblock[4*j+2],15);
+			B = enc0F6(enc0F5,B,C,D,A,MD5magic[4*j+48+3]+encblock[(4*j-7)&0xF],21);
+		}
+	
+		outdata[0]+=A;
+		outdata[1]+=B;
+		outdata[2]+=C;
+		outdata[3]+=D;
+	};
+
+	for (i=0;i<17;i++) {
+		A |= 0x100097; B ^= 0xA0008; C |= 0x50501010-i; D ^= 0x60606161+i; 
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F4,A,B,C,D,MD5magic[4*j+16]+encblock[(4*j-7)&0xF],4);   
+			D = enc0F6(enc0F4,D,A,B,C,MD5magic[4*j+16+1]+encblock[(4*j-4)&0xF],11);
+			C = enc0F6(enc0F4,C,D,A,B,MD5magic[4*j+16+2]+encblock[(4*j-1)&0xF],16);
+			B = enc0F6(enc0F4,B,C,D,A,MD5magic[4*j+16+3]+encblock[4*j+2],23);      
+		}                                                                              
+
+		for (j=0;j<4;j++) {                                                           
+			A = enc0F6(enc0F5,A,B,C,D,MD5magic[4*j+32]+encblock[(4*j+4)&0xF],6);   
+			D = enc0F6(enc0F5,D,A,B,C,MD5magic[4*j+32+1]+encblock[(4*j-5)&0xF],10);
+			C = enc0F6(enc0F5,C,D,A,B,MD5magic[4*j+32+2]+encblock[4*j+2],15);      
+			B = enc0F6(enc0F5,B,C,D,A,MD5magic[4*j+32+3]+encblock[(4*j-7)&0xF],21);
+		}
+
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F2,A,B,C,D,MD5magic[4*j]+encblock[4*j],7);
+			D = enc0F6(enc0F2,D,A,B,C,MD5magic[4*j+1]+encblock[4*j+1],12);
+			C = enc0F6(enc0F2,C,D,A,B,MD5magic[4*j+2]+encblock[4*j+2],17);
+			B = enc0F6(enc0F2,B,C,D,A,MD5magic[4*j+3]+encblock[4*j+3],22);      
+		}                                                                              
+		for (j=0;j<4;j++) {                                                            
+			A = enc0F6(encF3,A,B,C,D,MD5magic[4*j+48]+encblock[4*j+1],5);            
+			D = enc0F6(encF3,D,A,B,C,MD5magic[4*j+48+1]+encblock[(4*j+6)&0xF],9);
+			C = enc0F6(encF3,C,D,A,B,MD5magic[4*j+48+2]+encblock[(4*j-5)&0xF],14);    
+			B = enc0F6(encF3,B,C,D,A,MD5magic[4*j+48+3]+encblock[4*j],20);            
+		}                                                                              
+                                                                                               
+                                                                                               
+	                                                                                       
+		outdata[0]+=A;                                                                 
+		outdata[1]+=B;
+		outdata[2]+=C;                                                                 
+		outdata[3]+=D;                                                                 
+	};                                                                                  
+}
 #endif
+
+
+#ifdef allow1D3B
+void blockEncode1D3B(int *outdata, int *encblock) 
+{
+	int A,B,C,D,i,j;
+                                                                                             
+	A=outdata[0];
+	B=outdata[1];
+	C=outdata[2];
+	D=outdata[3];
+                                                                                             
+	for (i=0;i<21;i++) {
+		A |= 0x97; B ^= 8; C |= 0x60606161-i; D ^= 0x50501010+i;
+		for (j=0;j<4;j++) {
+			A = enc0F6(enc0F2,B,C,D,A,MD5magic[4*j]+encblock[4*j],7);
+			D = enc0F6(enc0F2,A,B,C,D,MD5magic[4*j+1]+encblock[4*j+1],12);
+			C = enc0F6(enc0F2,D,A,B,C,MD5magic[4*j+2]+encblock[4*j+2],17);
+			B = enc0F6(enc0F2,C,D,A,B,MD5magic[4*j+3]+encblock[4*j+3],22);
+		}
+		for (j=0;j<4;j++) {
+			A = enc0F6(encF3,B,C,D,A,MD5magic[4*(j+4)]+encblock[4*j+1],5);
+			D = enc0F6(encF3,A,B,C,D,MD5magic[4*(j+4)+1]+encblock[(4*j+6)&0xF],9);
+			C = enc0F6(encF3,D,A,B,C,MD5magic[4*(j+4)+2]+encblock[(4*j-5)&0xF],14);
+			B = enc0F6(encF3,C,D,A,B,MD5magic[4*(j+4)+3]+encblock[4*j],20);
+		}
+                                                                                             
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F4,B,C,D,A,MD5magic[4*(3-j)+32]+encblock[(4*j-7)&0xF],4);
+			D = enc0F6(enc0F4,A,B,C,D,MD5magic[4*(3-j)+32+1]+encblock[(4*j-4)&0xF],11);
+			C = enc0F6(enc0F4,D,A,B,C,MD5magic[4*(3-j)+32+2]+encblock[(4*j-1)&0xF],16);
+			B = enc0F6(enc0F4,C,D,A,B,MD5magic[4*(3-j)+32+3]+encblock[4*j+2],23);
+		}
+
+		for (j=3;j>=0;j--) {
+			A = enc0F6(enc0F5,B,C,D,A,MD5magic[4*(3-j)+48]+encblock[(4*j+4)&0xF],6);
+			D = enc0F6(enc0F5,A,B,C,D,MD5magic[4*(3-j)+48+1]+encblock[(4*j-5)&0xF],10);
+			C = enc0F6(enc0F5,D,A,B,C,MD5magic[4*(3-j)+48+2]+encblock[4*j+2],15);
+			B = enc0F6(enc0F5,C,D,A,B,MD5magic[4*(3-j)+48+3]+encblock[(4*j-7)&0xF],21);
+		}
+	
+		outdata[0]+=A;
+		outdata[1]+=B;
+		outdata[2]+=C;
+		outdata[3]+=D;
+	};
+
+}
+#endif
+
+void blockEncode(char *outdata, int *encblock, char btype) {
+	int i;
+	switch(btype) 
+	{
+		case tD35B:
+		{
+			blockEncodeF((int *)outdata,encblock,enc1F1,enc1F2,encF3,enc1F4,enc1F5);
+			break;
+		}
+#ifdef allow1F66
+		case t1F66:
+		{
+			blockEncode1F66((int *)outdata,encblock);
+			break;
+		}
+#endif
+#ifdef allow1D3B
+		case t1D3B:
+		{
+			blockEncode1D3B((int *)outdata,encblock);
+			break;
+		}
+#endif
+#ifdef allow6FF1
+		case t6FF1:
+		{
+			blockEncode6FF1((int *)outdata,encblock);
+			break;
+		}
+#endif
+	
+		case t3A5B:
+		{
+			blockEncode3A5B((int *)outdata,encblock);
+			break;
+		}
+
+		default:
+		{
+			blockEncodeF((int *)outdata,encblock,enc0F1,enc0F2,encF3,enc0F4,enc0F5);
+		}
+	}
 }
 
 void encode(char *inbuf,int cnt,char btype) {
@@ -165,32 +484,40 @@ void psw(char bfunc, char btype, char *outbuf) {
 			memcpy(inData,&buf1input[3],cnt-3);
 		else
 			memcpy(inData,buf1input,cnt);
-
-		if (btype==t595B) memcpy(&inData[cnt],&bSuffix[0],4); else
-		if (btype==tD35B) memcpy(&inData[cnt],&bSuffix[4],4); else
-		if (btype==tA95B) memcpy(&inData[cnt],&bSuffix[0],4); else
-		if (btype==t2A7B) memcpy(&inData[cnt],&bSuffix[12],4);
 		calcsuffix(bfunc,btype,outbuf);
+		memcpy(&inData[cnt],bSuffix[btype],4);
 		memcpy(&inData[cnt+4],outbuf,8);
 		encode(inData,23,btype);
 		r = outData[0] % 9;
 		lenpsw = 0;
 		for (cnt=0;cnt<16;cnt++) {
-			if ( (btype==t595B) || (btype==tD35B) || (btype==tA95B) ) {
+			if ( (btype==t595B) || (btype==tD35B) || (btype==tA95B) || (btype == t3A5B) ) {
 				if ((r <= cnt) && (lenpsw<8)) {
 					buf1output[lenpsw++] = scancods[encscans[outData[cnt] % sizeof(encscans)]];
 				}
-			} else if (btype==t2A7B) {
+			} else if ((btype==t2A7B) || (btype == t1F5A) ) { 
 				buf1output[lenpsw++] = chartabl2A7B[outData[cnt] % sizeof(chartabl2A7B)];
+			} else if (btype==t1D3B) {
+				buf1output[lenpsw++] = chartabl1D3B[outData[cnt] % sizeof(chartabl1D3B)];
+			} else if (btype==t1F66) {
+				buf1output[lenpsw++] = chartabl1F66[outData[cnt] % sizeof(chartabl1F66)];
+			} else if (btype==t6FF1) {
+				buf1output[lenpsw++] = chartabl6FF1[outData[cnt] % sizeof(chartabl6FF1)];
 			}
 		}
+		buf1output[lenpsw++] = 0;
 	}
 }
 
-
 void calcsuffix(char bfunc, char btype, char* outbuf) {
 	int i,r;
+	inData[12] = inData[0];
+	inData[11] = inData[1];
 	if (bfunc==fSVCTAG) {
+		inData[10] = inData[2];
+		inData[9]  = inData[3];
+		inData[8]  = inData[4];
+
 		outbuf[0] = inData[4];
 		outbuf[1] = (inData[4] >> 5) | (((inData[3] >> 5) | (inData[3] << 3)) & 0xF1);
 		outbuf[2] = (inData[3] >> 2);
@@ -209,22 +536,25 @@ void calcsuffix(char bfunc, char btype, char* outbuf) {
 	for (i=0;i<8;i++) {
 		r = 0xAA;
 		if (outbuf[i] & 1)
-			if (bfunc==fHDDSN) r ^= inData[8];
-			else if (bfunc==fSVCTAG) r ^= inData[4];
+			r ^= inData[8];
 		if (outbuf[i] & 2)
-			if (bfunc==fHDDSN) r ^= inData[9];
-			else if (bfunc==fSVCTAG) r ^= inData[3];
+			r ^= inData[9];
 		if (outbuf[i] & 4)
-			if (bfunc==fHDDSN) r ^= inData[10];
-			else if (bfunc==fSVCTAG) r ^= inData[2];
+			r ^= inData[10];
 		if (outbuf[i] & 8)
-			r ^= inData[1];
+			r ^= inData[11];
 		if (outbuf[i] & 16)
-			r ^= inData[0];
-		if ( (btype==t595B) || (btype==tD35B) || (btype==tA95B) ) {
+			r ^= inData[12];
+		if ( (btype==t595B) || (btype==tD35B) || (btype==tA95B) || (btype==t3A5B) ) {
 			outbuf[i] = encscans[r % sizeof(encscans)];
-		} else if (btype==t2A7B) {
+		} else if ( (btype==t2A7B) || (btype==t1F5A) ) {
 			outbuf[i] = chartabl2A7B[r % sizeof(chartabl2A7B)];
+		} else if (btype==t1D3B) {
+			outbuf[i] = chartabl1D3B[r % sizeof(chartabl1D3B)];
+		} else if (btype==t1F66) {
+			outbuf[i] = chartabl1F66[r % sizeof(chartabl1F66)];
+		} else if (btype==t6FF1) {
+			outbuf[i] = chartabl6FF1[r % sizeof(chartabl6FF1)];
 		}
 	}
 }
@@ -241,10 +571,10 @@ int main(int argc, char *argv[]) {
 		  "Short service tag should be right padded with '*' up to length 7 chars\n" \
 		  "HDD serial number is right 11 chars from real HDDSerNum left padded with '*'\n" \
 		  "Some BIOSes has left pad HDD serial number with spaces instead '*'\n",stdout);
-
+		
 	while (!feof(stdin)) {
 		if ((argc<=1) && argn) break;
-		fputs("Input: #",stdout);
+		fputs("Input: ",stdout);
 		if (argc>1) {
 			strncpy(buf1input,argv[++argn],sizeof(buf1input));argc--;
 		}
@@ -258,6 +588,11 @@ int main(int argc, char *argv[]) {
 		len=strlen(buf1input);
 		if (len && (buf1input[len-1]=='\n')) {len--;eol=1;buf1input[len]=0;}
 		if (echo) {fputs(buf1input,stdout);fputs("\n",stdout);}
+		for (len1=0;len1<len;len1++) {
+			if (isalpha(buf1input[len1])) {
+				buf1input[len1] = toupper(buf1input[len1]);
+			}
+		}
 		minus=strchr(buf1input,'-');
 		if (len==11) {
 			if (minus!=NULL) {
@@ -276,18 +611,32 @@ int main(int argc, char *argv[]) {
 
 			btype=-1;
 #ifdef allow595B
-			if (strncmp(&buf1input[len1+1],&bSuffix[0],4)==0) btype=t595B;
-			else
+			if (strncmp(&buf1input[len1+1],bSuffix[t595B],4)==0) btype=t595B; else
 #endif
-			if (strncmp(&buf1input[len1+1],&bSuffix[4],4)==0) btype=tD35B;
-			else
+			if (strncmp(&buf1input[len1+1],bSuffix[tD35B],4)==0) btype=tD35B; else
 #ifdef allowA95B
-			if (strncmp(&buf1input[len1+1],&bSuffix[8],4)==0) btype=tA95B;
-			else
+			if (strncmp(&buf1input[len1+1],bSuffix[tA95B],4)==0) btype=tA95B; else
 #endif
 #ifdef allow2A7B
-			if (strncmp(&buf1input[len1+1],&bSuffix[12],4)==0) btype=t2A7B;
+			if (strncmp(&buf1input[len1+1],bSuffix[t2A7B],4)==0) btype=t2A7B; else
 #endif
+#ifdef allow1D3B
+			if (strncmp(&buf1input[len1+1],bSuffix[t1D3B],4)==0) btype=t1D3B; else
+#endif
+#ifdef allow3A5B
+			if (strncmp(&buf1input[len1+1],bSuffix[t3A5B],4)==0) btype=t3A5B; else
+#endif
+#ifdef allow1F66
+			if (strncmp(&buf1input[len1+1],bSuffix[t1F66],4)==0) btype=t1F66; else
+#endif
+#ifdef allow6FF1
+			if (strncmp(&buf1input[len1+1],bSuffix[t6FF1],4)==0) btype=t6FF1; else
+#endif
+#ifdef allow1F5A
+			if (strncmp(&buf1input[len1+1],bSuffix[t1F5A],4)==0) btype=t1F5A;
+#endif
+
+	
 			if (btype<0) {
 				fputs("- Invalid service tag in input string, allowed only -D35B and other registered\n",stdout);
 				continue;
@@ -319,11 +668,11 @@ int main(int argc, char *argv[]) {
 		if (bug4) fputs(" !bug4 warning - password may not work!",stdout);
 
 		if (btype==t595B) if (bfunc==fSVCTAG) { //to check if A95B bug
-			char mpw1[20];
-			strcpy(mpw1,buf1output);
+			char mpw1[32];
+			strlcpy(mpw1,buf1output, sizeof(buf1output));
 			psw(bfunc,tA95B,buf1output);
 			if (strcmp(mpw1,buf1output)!=0) {
-				fputs(" passwordA95B: ",stdout);
+				fputs(" password A95B: ",stdout);
 				fputs(buf1output,stdout);
 			}
 		}
