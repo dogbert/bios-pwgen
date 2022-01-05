@@ -58,12 +58,12 @@ print("hexadecimal code from which the master password can be calculated,")
 print("e.g. 0A1B2D3E or AAAA-BBBB-CCCC-DEAD-BEEF")
 print("")
 print("Please enter the code: ")
-input = raw_input().replace('-', '')
-if len(input) == 20: input = input[12:20]
+code = input().replace('-', '')
+if len(code) == 20: code = code[12:20]
 table = generateCRC16Table()
-password = decryptCode(input.upper(), table)
-print("")
+password = decryptCode(code.upper(), table)
+
 print("The master password is: " + password)
 if (os.name == 'nt'):
 	print("Press a key to exit...")
-	raw_input()
+	_ = input()
