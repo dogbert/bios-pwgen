@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 
 #define mystr "Dell Laptop Master Password Generator.\nCopyright (C) 2011-2012 dogbert; 2007-2010 hpgl"
 
@@ -669,7 +670,7 @@ int main(int argc, char *argv[]) {
 
 		if (btype==t595B) if (bfunc==fSVCTAG) { //to check if A95B bug
 			char mpw1[32];
-			strlcpy(mpw1,buf1output, sizeof(buf1output));
+			strncpy(mpw1,buf1output, sizeof(buf1output));
 			psw(bfunc,tA95B,buf1output);
 			if (strcmp(mpw1,buf1output)!=0) {
 				fputs(" password A95B: ",stdout);
